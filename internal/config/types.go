@@ -8,7 +8,7 @@ type Configuration struct {
 }
 
 type AtlassianConfig struct {
-	AtlassianBaseUrl string `ini:"ATLASSIAN_BASE_URL"`
-	AtlassianApiKey  string `ini:"ATLASSIAN_API_KEY"`
-	UserEmail        string `ini:"ATLASSIAN_USER_EMAIL"`
+	AtlassianBaseUrl string `ini:"atlassian_base_url"`
+	AtlassianApiKey  string `ini:"atlassian_api_key"`
+	UserEmail        string `ini:"atlassian_user_email"`
 }

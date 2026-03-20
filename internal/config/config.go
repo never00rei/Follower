@@ -9,13 +9,9 @@ import (
 )
 
 const (
-	ConfigFile                string = "credentials"
-	ConfigFolder              string = "follower"
-	EnvSessionBearerToken     string = "FOLLOWER_SESSION_TOKEN"
-	EnvSessionTokenExpiryTime string = "FOLLOWER_SESSION_EXPIRY"
-	EnvSessionTenant          string = "FOLLOWER_TENANT"
-	EnvSessionApiUrl          string = "FOLLOWER_SESSION_API_URL"
-	AtlassianApiVersion       string = "3"
+	ConfigFile          string = "credentials"
+	ConfigFolder        string = "follower"
+	AtlassianApiVersion string = "3"
 )
 
 func Dir() (string, error) {
