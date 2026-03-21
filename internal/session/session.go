@@ -19,7 +19,7 @@ const (
 	activeSessionFile = "active_session.json"
 )
 
-func Follow(issueID string) error {
+func Follow(issueID string, w io.Writer) error {
 	issueID = strings.TrimSpace(issueID)
 	if issueID == "" {
 		return errors.New("issue id is required")
@@ -32,6 +32,12 @@ func Follow(issueID string) error {
 
 	if current != nil {
 		return fmt.Errorf("an active session already exists for %s", current.IssueID)
+	}
+
+	if w != nil {
+		if _, err := fmt.Fprintf(w, "Starting session for %s\n", issueID); err != nil {
+			return err
+		}
 	}
 
 	now := time.Now().UTC()

@@ -34,7 +34,7 @@ func run(args []string) error {
 			return fmt.Errorf("usage: follower follow ISSUE-ID")
 		}
 
-		return session.Follow(args[1])
+		return followIssue(args[1], os.Stdout)
 	case "issue":
 		if len(args) != 2 {
 			return fmt.Errorf("usage: follower issue ISSUE-ID")
@@ -87,6 +87,29 @@ func showIssue(issueID string, stdout *os.File) error {
 	encoder := json.NewEncoder(stdout)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(issue)
+}
+
+func followIssue(issueID string, stdout *os.File) error {
+	conf, err := config.LoadConfiguration()
+	if err != nil {
+		return err
+	}
+
+	client, err := jira.NewClient(conf.Atlassian)
+	if err != nil {
+		return err
+	}
+
+	issue, err := client.GetIssue(context.Background(), issueID)
+	if err != nil {
+		return fmt.Errorf("could not load Jira issue %s: %w", issueID, err)
+	}
+
+	if _, err := fmt.Fprintf(stdout, "%s [%s] %s\n", issue.Key, issue.Fields.Status.Name, issue.Fields.Summary); err != nil {
+		return err
+	}
+
+	return session.Follow(issue.Key, stdout)
 }
 
 func initConfig(stdin *os.File, stdout *os.File) error {
