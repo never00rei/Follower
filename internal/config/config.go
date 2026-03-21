@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	ConfigFile          string = "credentials"
+	ConfigFile          string = "config"
 	ConfigFolder        string = "follower"
 	AtlassianApiVersion string = "3"
 )
