@@ -2,6 +2,7 @@ package session
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/never00rei/Follower/internal/config"
 	"github.com/never00rei/Follower/internal/git"
+	"github.com/never00rei/Follower/internal/jira"
 )
 
 const (
@@ -415,4 +417,121 @@ func commitGitCheckpoint(gitCheckpoint *GitCheckpoint) (string, error) {
 		Body:    gitCheckpoint.CommitBody,
 		Time:    gitCheckpoint.CommitTime,
 	})
+}
+
+func SyncCheckpoints(ctx context.Context, jiraClient *jira.Client) error {
+	s, err := loadActiveSession()
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return errors.New("no active session")
+		}
+
+		return err
+	}
+
+	if len(s.Checkpoints) == 0 {
+		return errors.New("no checkpoints in active session")
+	}
+
+	for i := range s.Checkpoints {
+		checkpoint := &s.Checkpoints[i]
+		if checkpoint.Jira == nil || checkpoint.Jira.SyncedAt != nil {
+			continue
+		}
+
+		comment, err := jiraClient.PostComment(ctx, s.IssueID, jiraCommentBody(s, checkpoint))
+		if err != nil {
+			checkpoint.SyncFailed = true
+			checkpoint.Jira.LastError = err.Error()
+			return saveActiveSession(s)
+		}
+
+		now := time.Now().UTC()
+		checkpoint.SyncFailed = false
+		checkpoint.Jira.CommentID = comment.ID
+		checkpoint.Jira.SyncedAt = &now
+		checkpoint.Jira.LastError = ""
+
+		if err := saveActiveSession(s); err != nil {
+			return err
+		}
+	}
+
+	if hasPendingGitCheckpoints(s) {
+		client := git.NewClient()
+		if err := client.Push(); err != nil {
+			markPendingGitCheckpointErrors(s, err.Error())
+			return saveActiveSession(s)
+		}
+
+		now := time.Now().UTC()
+		markPendingGitCheckpointsPushed(s, now)
+
+		if err := saveActiveSession(s); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func jiraCommentBody(s *Session, checkpoint *Checkpoint) string {
+	if s == nil || checkpoint == nil {
+		return ""
+	}
+
+	return fmt.Sprintf(
+		"Follower checkpoint recorded: %s\nFollower session: %s\n\n%s",
+		checkpoint.CreatedAt.Format(time.RFC3339),
+		s.ID,
+		checkpoint.Message,
+	)
+}
+
+func hasPendingGitCheckpoints(s *Session) bool {
+	if s == nil {
+		return false
+	}
+
+	for i := range s.Checkpoints {
+		checkpoint := &s.Checkpoints[i]
+		if checkpoint.Git != nil && checkpoint.Git.PushedAt == nil {
+			return true
+		}
+	}
+
+	return false
+}
+
+func markPendingGitCheckpointsPushed(s *Session, pushedAt time.Time) {
+	if s == nil {
+		return
+	}
+
+	for i := range s.Checkpoints {
+		checkpoint := &s.Checkpoints[i]
+		if checkpoint.Git == nil || checkpoint.Git.PushedAt != nil {
+			continue
+		}
+
+		checkpoint.SyncFailed = false
+		checkpoint.Git.PushedAt = &pushedAt
+		checkpoint.Git.LastError = ""
+	}
+}
+
+func markPendingGitCheckpointErrors(s *Session, lastError string) {
+	if s == nil {
+		return
+	}
+
+	for i := range s.Checkpoints {
+		checkpoint := &s.Checkpoints[i]
+		if checkpoint.Git == nil || checkpoint.Git.PushedAt != nil {
+			continue
+		}
+
+		checkpoint.SyncFailed = true
+		checkpoint.Git.LastError = lastError
+	}
 }

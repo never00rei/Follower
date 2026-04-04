@@ -45,6 +45,8 @@ func run(args []string) error {
 		return runCheckpoint(args[1:])
 	case "status":
 		return session.Status(os.Stdout)
+	case "sync":
+		return runSync()
 	case "done":
 		return session.Done()
 	case "help":
@@ -64,6 +66,7 @@ func printUsage() {
 	fmt.Println("  follower issue ISSUE-ID")
 	fmt.Println("  follower checkpoint [MESSAGE]")
 	fmt.Println("  follower status")
+	fmt.Println("  follower sync")
 	fmt.Println("  follower done")
 }
 
@@ -130,6 +133,20 @@ func runCheckpoint(args []string) error {
 
 	message := strings.TrimSpace(strings.Join(messageParts, " "))
 	return session.AddPreparedCheckpoint(message, targets)
+}
+
+func runSync() error {
+	conf, err := config.LoadConfiguration()
+	if err != nil {
+		return err
+	}
+
+	client, err := jira.NewClient(conf.Atlassian)
+	if err != nil {
+		return err
+	}
+
+	return session.SyncCheckpoints(context.Background(), client)
 }
 
 func initConfig(stdin *os.File, stdout *os.File) error {
