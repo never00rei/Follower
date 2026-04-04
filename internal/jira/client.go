@@ -1,6 +1,7 @@
 package jira
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -50,6 +51,29 @@ func (c *Client) GetIssue(ctx context.Context, issueID string) (*Issue, error) {
 	}
 
 	return &issue, nil
+}
+
+func (c *Client) PostComment(ctx context.Context, issueID, text string) (*Comment, error) {
+	reqBody, err := json.Marshal(CreateCommentRequest{
+		Body: plainTextToADF(text),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var comment Comment
+	err = c.doJSON(
+		ctx,
+		http.MethodPost,
+		"/rest/api/3/issue/"+issueID+"/comment",
+		bytes.NewReader(reqBody),
+		&comment,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &comment, nil
 }
 
 func (c *Client) doJSON(ctx context.Context, method, apiPath string, body io.Reader, out any) error {

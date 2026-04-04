@@ -2,6 +2,7 @@ package jira
 
 import "encoding/json"
 
+// These structs build out what a Jira issue looks like.
 type Issue struct {
 	ID     string      `json:"id"`
 	Key    string      `json:"key"`
@@ -50,4 +51,26 @@ type IssueUser struct {
 type IssuePriority struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+}
+
+// The following structs are used in the Sync process for commentary.
+type ADFDocument struct {
+	Type    string    `json:"type"`
+	Version int       `json:"version"`
+	Content []ADFNode `json:"content"`
+}
+
+type ADFNode struct {
+	Type    string    `json:"type"`
+	Text    string    `json:"text,omitempty"`
+	Content []ADFNode `json:"content,omitempty"`
+}
+
+type Comment struct {
+	ID   string      `json:"id"`
+	Body ADFDocument `json:"body"`
+}
+
+type CreateCommentRequest struct {
+	Body ADFDocument `json:"body"`
 }

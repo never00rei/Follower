@@ -11,11 +11,12 @@ type Session struct {
 }
 
 type Checkpoint struct {
-	Message   string            `json:"message"`
-	CreatedAt time.Time         `json:"created_at"`
-	Targets   CheckpointTargets `json:"targets"`
-	Git       *GitCheckpoint    `json:"git,omitempty"`
-	Jira      *JiraCheckpoint   `json:"jira,omitempty"`
+	Message    string            `json:"message"`
+	CreatedAt  time.Time         `json:"created_at"`
+	Targets    CheckpointTargets `json:"targets"`
+	SyncFailed bool              `json:"sync_failed,omitempty"`
+	Git        *GitCheckpoint    `json:"git,omitempty"`
+	Jira       *JiraCheckpoint   `json:"jira,omitempty"`
 }
 
 type CheckpointTargets struct {
@@ -28,9 +29,14 @@ type GitCheckpoint struct {
 	CommitTime    time.Time `json:"commit_time"`
 	CommitBody    string    `json:"commit_body,omitempty"`
 	CommitSHA     string    `json:"commit_sha,omitempty"`
+	PushedAt      *time.Time `json:"pushed_at,omitempty"`
+	LastError     string     `json:"last_error,omitempty"`
 }
 
 type JiraCheckpoint struct {
 	WindowStartedAt time.Time `json:"window_started_at"`
 	WindowEndedAt   time.Time `json:"window_ended_at"`
+	CommentID       string    `json:"comment_id,omitempty"`
+	SyncedAt        *time.Time `json:"synced_at,omitempty"`
+	LastError       string     `json:"last_error,omitempty"`
 }

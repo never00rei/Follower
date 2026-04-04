@@ -54,6 +54,19 @@ func (c *Client) Commit(input CommitInput) (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
+func (c *Client) Push() error {
+	cmd := exec.Command("git", "push")
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git push failed: %w", err)
+	}
+
+	return nil
+}
+
 func ensureStagedChanges() error {
 	cmd := exec.Command("git", "diff", "--cached", "--quiet")
 	if err := cmd.Run(); err == nil {
