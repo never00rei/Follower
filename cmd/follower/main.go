@@ -42,8 +42,7 @@ func run(args []string) error {
 
 		return showIssue(args[1], os.Stdout)
 	case "checkpoint":
-		message := strings.TrimSpace(strings.Join(args[1:], " "))
-		return session.AddCheckpoint(message)
+		return runCheckpoint(args[1:])
 	case "status":
 		return session.Status(os.Stdout)
 	case "done":
@@ -110,6 +109,27 @@ func followIssue(issueID string, stdout *os.File) error {
 	}
 
 	return session.Follow(issue.Key, stdout)
+}
+
+func runCheckpoint(args []string) error {
+	var (
+		messageParts []string
+		targets      session.CheckpointTargets
+	)
+
+	for _, arg := range args {
+		switch arg {
+		case "--jira":
+			targets.Jira = true
+		case "--git":
+			targets.Git = true
+		default:
+			messageParts = append(messageParts, arg)
+		}
+	}
+
+	message := strings.TrimSpace(strings.Join(messageParts, " "))
+	return session.AddPreparedCheckpoint(message, targets)
 }
 
 func initConfig(stdin *os.File, stdout *os.File) error {

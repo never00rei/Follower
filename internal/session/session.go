@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/never00rei/Follower/internal/config"
+	"github.com/never00rei/Follower/internal/git"
 )
 
 const (
@@ -59,27 +60,54 @@ func Follow(issueID string, w io.Writer) error {
 }
 
 func AddCheckpoint(message string) error {
+	return AddPreparedCheckpoint(message, CheckpointTargets{})
+}
+
+func AddPreparedCheckpoint(message string, targets CheckpointTargets) error {
 	s, err := requireActiveSession()
 	if err != nil {
 		return err
 	}
 
-	if strings.TrimSpace(message) == "" {
-		message, err = openEditor(s)
-		if err != nil {
-			return err
-		}
+	createdAt := time.Now().UTC()
+	message, gitSummary, err := collectCheckpointInput(s, message, targets, createdAt)
+	if err != nil {
+		return err
 	}
 
-	message = trimEditorContent(message)
 	if message == "" {
 		return errors.New("checkpoint message is empty")
 	}
 
-	s.Checkpoints = append(s.Checkpoints, Checkpoint{
+	checkpoint := Checkpoint{
 		Message:   message,
-		CreatedAt: time.Now().UTC(),
-	})
+		CreatedAt: createdAt,
+		Targets:   targets,
+	}
+
+	if targets.Git {
+		checkpoint.Git = &GitCheckpoint{
+			CommitMessage: gitSummary,
+			CommitTime:    createdAt,
+			CommitBody:    message,
+		}
+
+		commitSHA, err := commitGitCheckpoint(checkpoint.Git)
+		if err != nil {
+			return err
+		}
+
+		checkpoint.Git.CommitSHA = commitSHA
+	}
+
+	if targets.Jira {
+		checkpoint.Jira = &JiraCheckpoint{
+			WindowStartedAt: checkpointWindowStart(s),
+			WindowEndedAt:   createdAt,
+		}
+	}
+
+	s.Checkpoints = append(s.Checkpoints, checkpoint)
 
 	return saveActiveSession(s)
 }
@@ -214,7 +242,39 @@ func activeSessionPath() string {
 	return filepath.Join(dir, activeSessionFile)
 }
 
-func openEditor(s *Session) (string, error) {
+func collectCheckpointInput(s *Session, message string, targets CheckpointTargets, createdAt time.Time) (string, string, error) {
+	if strings.TrimSpace(message) != "" {
+		return strings.TrimSpace(message), defaultCommitMessage(s.IssueID, createdAt), nil
+	}
+
+	if targets.Git {
+		return openGitCheckpointEditor(s, createdAt)
+	}
+
+	content, err := openEditor(checkpointTemplate(s))
+	if err != nil {
+		return "", "", err
+	}
+
+	return trimEditorContent(content), "", nil
+}
+
+func openGitCheckpointEditor(s *Session, createdAt time.Time) (string, string, error) {
+	defaultSummary := defaultCommitMessage(s.IssueID, createdAt)
+	content, err := openEditor(gitCheckpointTemplate(s, defaultSummary))
+	if err != nil {
+		return "", "", err
+	}
+
+	gitSummary, message := parseGitCheckpointContent(content)
+	if gitSummary == "" {
+		gitSummary = defaultSummary
+	}
+
+	return message, gitSummary, nil
+}
+
+func openEditor(template string) (string, error) {
 	editor := os.Getenv("EDITOR")
 	if editor == "" {
 		editor = fallbackEditor()
@@ -226,7 +286,6 @@ func openEditor(s *Session) (string, error) {
 	}
 	defer os.Remove(tmpFile.Name())
 
-	template := checkpointTemplate(s)
 	if _, err := tmpFile.WriteString(template); err != nil {
 		tmpFile.Close()
 		return "", err
@@ -271,6 +330,15 @@ func checkpointTemplate(s *Session) string {
 	)
 }
 
+func gitCheckpointTemplate(s *Session, summary string) string {
+	return fmt.Sprintf(
+		"# Follower checkpoint\n# Issue: %s\n# Session: %s\n# Lines starting with # are ignored\n\n[GIT_SUMMARY]\n%s\n\n[MESSAGE]\n",
+		s.IssueID,
+		s.ID,
+		summary,
+	)
+}
+
 func trimEditorContent(content string) string {
 	var lines []string
 	scanner := bufio.NewScanner(strings.NewReader(content))
@@ -284,4 +352,67 @@ func trimEditorContent(content string) string {
 	}
 
 	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func parseGitCheckpointContent(content string) (string, string) {
+	var (
+		summaryLines []string
+		messageLines []string
+		section      string
+	)
+
+	scanner := bufio.NewScanner(strings.NewReader(content))
+	for scanner.Scan() {
+		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+
+		if strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+
+		switch trimmed {
+		case "[GIT_SUMMARY]":
+			section = "git_summary"
+			continue
+		case "[MESSAGE]":
+			section = "message"
+			continue
+		}
+
+		switch section {
+		case "git_summary":
+			summaryLines = append(summaryLines, line)
+		case "message":
+			messageLines = append(messageLines, line)
+		}
+	}
+
+	return strings.TrimSpace(strings.Join(summaryLines, "\n")), strings.TrimSpace(strings.Join(messageLines, "\n"))
+}
+
+func checkpointWindowStart(s *Session) time.Time {
+	for i := len(s.Checkpoints) - 1; i >= 0; i-- {
+		if s.Checkpoints[i].Targets.Jira {
+			return s.Checkpoints[i].CreatedAt
+		}
+	}
+
+	return s.StartedAt
+}
+
+func defaultCommitMessage(issueID string, createdAt time.Time) string {
+	return fmt.Sprintf("chore(%s): checkpoint %s", issueID, createdAt.Format(time.RFC3339))
+}
+
+func commitGitCheckpoint(gitCheckpoint *GitCheckpoint) (string, error) {
+	if gitCheckpoint == nil {
+		return "", errors.New("git checkpoint is nil")
+	}
+
+	client := git.NewClient()
+	return client.Commit(git.CommitInput{
+		Summary: gitCheckpoint.CommitMessage,
+		Body:    gitCheckpoint.CommitBody,
+		Time:    gitCheckpoint.CommitTime,
+	})
 }
