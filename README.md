@@ -21,3 +21,37 @@ When you're ready to capture progress, run `follower checkpoint`. This opens an 
 If that checkpoint should also be prepared for Git or Jira, you can pass `--git`, `--jira`, or both. Follower will create a local commit for Git checkpoints and store Jira-related progress locally so it is ready to sync later.
 
 When the work is ready to publish, the intended flow is to run `follower sync`, which will push Git changes and send the related Jira updates.
+
+## Commit syntax
+
+Follower uses Conventional Commits for pull request titles and release notes.
+
+Use this shape:
+
+```text
+type(scope): short description
+```
+
+Examples:
+
+```text
+feat(sync): push prepared checkpoints
+fix(jira): handle missing issue fields
+docs(readme): document commit syntax
+chore(build): update release workflow
+feat(session)!: change checkpoint storage format
+```
+
+Accepted types are `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, and `revert`.
+
+Use `feat` for user-facing additions and `fix` for bug fixes. These are used by release automation when generating changelogs. Use `!` before the colon, or add a `BREAKING CHANGE:` footer, for breaking changes.
+
+Prefer Jira issue IDs in the body instead of the scope:
+
+```text
+fix(jira): handle missing issue fields
+
+Refs: DEV-7
+```
+
+For release branch and tag details, see [RELEASE.md](./RELEASE.md).
