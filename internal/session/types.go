@@ -25,18 +25,18 @@ type CheckpointTargets struct {
 }
 
 type GitCheckpoint struct {
-	CommitMessage string    `json:"commit_message"`
-	CommitTime    time.Time `json:"commit_time"`
-	CommitBody    string    `json:"commit_body,omitempty"`
-	CommitSHA     string    `json:"commit_sha,omitempty"`
+	CommitMessage string     `json:"commit_message"`
+	CommitTime    time.Time  `json:"commit_time"`
+	CommitBody    string     `json:"commit_body,omitempty"`
+	CommitSHA     string     `json:"commit_sha,omitempty"`
 	PushedAt      *time.Time `json:"pushed_at,omitempty"`
 	LastError     string     `json:"last_error,omitempty"`
 }
 
 type JiraCheckpoint struct {
-	WindowStartedAt time.Time `json:"window_started_at"`
-	WindowEndedAt   time.Time `json:"window_ended_at"`
-	CommentID       string    `json:"comment_id,omitempty"`
+	WindowStartedAt time.Time  `json:"window_started_at"`
+	WindowEndedAt   time.Time  `json:"window_ended_at"`
+	CommentID       string     `json:"comment_id,omitempty"`
 	SyncedAt        *time.Time `json:"synced_at,omitempty"`
 	LastError       string     `json:"last_error,omitempty"`
 }

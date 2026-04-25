@@ -13,6 +13,12 @@ import (
 	"github.com/never00rei/Follower/internal/session"
 )
 
+var (
+	version = "dev"
+	commit  = "unknown"
+	date    = "unknown"
+)
+
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, "follower:", err)
@@ -49,6 +55,9 @@ func run(args []string) error {
 		return runSync()
 	case "done":
 		return session.Done()
+	case "version":
+		printVersion()
+		return nil
 	case "help":
 		printUsage()
 		return nil
@@ -68,6 +77,11 @@ func printUsage() {
 	fmt.Println("  follower status")
 	fmt.Println("  follower sync")
 	fmt.Println("  follower done")
+	fmt.Println("  follower version")
+}
+
+func printVersion() {
+	fmt.Printf("follower %s\ncommit: %s\nbuilt: %s\n", version, commit, date)
 }
 
 func showIssue(issueID string, stdout *os.File) error {
