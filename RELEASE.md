@@ -31,10 +31,37 @@ Refs: DEV-7
 
 - CI runs on `main`, `release/**`, and pull requests into those branches.
 - PR title linting enforces Conventional Commit titles.
-- Pushing a tag matching `v*` runs GoReleaser and creates a GitHub release with checksums and binaries.
+- Release Please opens or updates a release PR on pushes to `main` and `release/**`.
+- Merging the release PR creates the next version tag from Conventional Commits.
+- GoReleaser publishes checksums and binaries when Release Please creates a release.
+- Pushing a tag matching `v*` still runs GoReleaser for manual release recovery.
 - The built binary embeds the release version, commit, and build date. Check it with `follower version`.
 
-## Cutting A Release
+## Version Bumps
+
+Release Please calculates the next version from Conventional Commits:
+
+- `fix:` creates a patch release, such as `v0.1.0` to `v0.1.1`.
+- `feat:` creates a minor release, such as `v0.1.1` to `v0.2.0`.
+- `!` or `BREAKING CHANGE:` creates a major release, such as `v1.2.3` to `v2.0.0`.
+- `chore:`, `docs:`, `ci:`, and `test:` do not create releases by themselves.
+
+The current bootstrap version is tracked in `.release-please-manifest.json`. Release Please updates that manifest and `CHANGELOG.md` in its release PRs.
+
+## Release Flow
+
+Normal release flow:
+
+```sh
+git checkout main
+git pull
+```
+
+Merge work into `main` using Conventional Commit PR titles. Release Please will open or update a release PR. Review and merge that release PR when you want to ship. After it merges, Release Please creates the version tag and GoReleaser publishes the binaries.
+
+For maintenance releases, cherry-pick fixes onto the relevant `release/vX.Y` branch and push that branch. Release Please will open or update a release PR against that same release branch.
+
+## Manual Release Recovery
 
 Create a release branch when starting a version line:
 
@@ -45,7 +72,7 @@ git checkout -b release/v0.1
 git push origin release/v0.1
 ```
 
-Tag the exact commit to ship:
+Tag the exact commit to ship manually only if the automated release flow is unavailable:
 
 ```sh
 git tag -a v0.1.0 -m "Release v0.1.0"
@@ -60,9 +87,3 @@ git cherry-pick <fix-commit>
 git tag -a v0.1.1 -m "Release v0.1.1"
 git push origin release/v0.1 v0.1.1
 ```
-
-Use semantic versioning for tags:
-
-- `feat:` normally means minor version bump.
-- `fix:` normally means patch version bump.
-- `!` or `BREAKING CHANGE:` means major version bump.

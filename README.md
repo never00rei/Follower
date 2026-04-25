@@ -24,7 +24,7 @@ When the work is ready to publish, the intended flow is to run `follower sync`, 
 
 ## Commit syntax
 
-Follower uses Conventional Commits for pull request titles and release notes.
+Follower uses Conventional Commits for pull request titles, release notes, and automated versioning.
 
 Use this shape:
 
@@ -44,7 +44,7 @@ feat(session)!: change checkpoint storage format
 
 Accepted types are `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, and `revert`.
 
-Use `feat` for user-facing additions and `fix` for bug fixes. These are used by release automation when generating changelogs. Use `!` before the colon, or add a `BREAKING CHANGE:` footer, for breaking changes.
+Use `fix` for patch releases and `feat` for minor releases. Use `!` before the colon, or add a `BREAKING CHANGE:` footer, for major releases. Other types can appear in changelogs but do not create a release by themselves.
 
 Prefer Jira issue IDs in the body instead of the scope:
 
