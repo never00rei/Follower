@@ -16,15 +16,19 @@ import (
 	"github.com/never00rei/Follower/internal/config"
 	"github.com/never00rei/Follower/internal/git"
 	"github.com/never00rei/Follower/internal/jira"
+	"github.com/never00rei/Follower/internal/workcontext"
 )
 
 const (
 	activeSessionFile = "active_session.json"
 )
 
-func Follow(issueID string, w io.Writer) error {
-	issueID = strings.TrimSpace(issueID)
-	if issueID == "" {
+func Follow(input FollowInput, w io.Writer) error {
+	input.IssueID = strings.TrimSpace(input.IssueID)
+	input.WorkContextID = strings.TrimSpace(input.WorkContextID)
+	input.ParentContextID = strings.TrimSpace(input.ParentContextID)
+
+	if input.IssueID == "" {
 		return errors.New("issue id is required")
 	}
 
@@ -38,16 +42,22 @@ func Follow(issueID string, w io.Writer) error {
 	}
 
 	if w != nil {
-		if _, err := fmt.Fprintf(w, "Starting session for %s\n", issueID); err != nil {
+		if _, err := fmt.Fprintf(w, "Starting session for %s\n", input.IssueID); err != nil {
 			return err
 		}
 	}
 
-	now := time.Now().UTC()
+	now := input.StartedAt
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+
 	s := &Session{
-		ID:        now.Format("20060102T150405.000000000Z07:00"),
-		IssueID:   issueID,
-		StartedAt: now,
+		ID:              now.Format("20060102T150405.000000000Z07:00"),
+		IssueID:         input.IssueID,
+		WorkContextID:   input.WorkContextID,
+		ParentContextID: input.ParentContextID,
+		StartedAt:       now,
 	}
 
 	if err := saveActiveSession(s); err != nil {
@@ -61,18 +71,37 @@ func Follow(issueID string, w io.Writer) error {
 	return Done()
 }
 
+func EnsureNoActive() error {
+	current, err := loadActiveSession()
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+
+		return err
+	}
+
+	return fmt.Errorf("an active session already exists for %s", current.IssueID)
+}
+
 func AddCheckpoint(message string) error {
 	return AddPreparedCheckpoint(message, CheckpointTargets{})
 }
 
 func AddPreparedCheckpoint(message string, targets CheckpointTargets) error {
-	s, err := requireActiveSession()
+	s, err := loadOptionalActiveSession()
 	if err != nil {
 		return err
 	}
 
 	createdAt := time.Now().UTC()
-	message, gitSummary, err := collectCheckpointInput(s, message, targets, createdAt)
+
+	ctx, err := resolveCheckpointContext(s)
+	if err != nil {
+		return err
+	}
+
+	message, gitSummary, err := collectCheckpointInput(ctx.JiraTicketID, checkpointTrackingID(ctx, s), message, targets, createdAt)
 	if err != nil {
 		return err
 	}
@@ -103,10 +132,28 @@ func AddPreparedCheckpoint(message string, targets CheckpointTargets) error {
 	}
 
 	if targets.Jira {
-		checkpoint.Jira = &JiraCheckpoint{
-			WindowStartedAt: checkpointWindowStart(s),
-			WindowEndedAt:   createdAt,
+		if s != nil {
+			checkpoint.Jira = &JiraCheckpoint{
+				WindowStartedAt: checkpointWindowStart(s),
+				WindowEndedAt:   createdAt,
+			}
 		}
+	}
+
+	if _, err := workcontext.RecordCheckpoint(
+		ctx.ID,
+		message,
+		workcontext.CheckpointTargets{
+			Jira: targets.Jira,
+			Git:  targets.Git,
+		},
+		createdAt,
+	); err != nil {
+		return err
+	}
+
+	if s == nil {
+		return nil
 	}
 
 	s.Checkpoints = append(s.Checkpoints, checkpoint)
@@ -127,9 +174,10 @@ func Status(w io.Writer) error {
 
 	_, err = fmt.Fprintf(
 		w,
-		"Active issue: %s\nSession ID: %s\nStarted: %s\nElapsed: %s\nCheckpoints: %d\n",
+		"Active issue: %s\nSession ID: %s\nWork context ID: %s\nStarted: %s\nElapsed: %s\nCheckpoints: %d\n",
 		s.IssueID,
 		s.ID,
+		s.WorkContextID,
 		s.StartedAt.Format(time.RFC3339),
 		time.Since(s.StartedAt).Round(time.Second),
 		len(s.Checkpoints),
@@ -169,9 +217,18 @@ func runShell(s *Session) error {
 	cmd.Stderr = os.Stderr
 	cmd.Env = append(os.Environ(),
 		"FOLLOWER_ISSUE_ID="+s.IssueID,
+		"FOLLOWER_JIRA_TICKET_ID="+s.IssueID,
 		"FOLLOWER_SESSION_ID="+s.ID,
 		"FOLLOWER_SESSION_STARTED_AT="+s.StartedAt.Format(time.RFC3339),
 	)
+
+	if s.WorkContextID != "" {
+		cmd.Env = append(cmd.Env, "FOLLOWER_CONTEXT_ID="+s.WorkContextID)
+	}
+
+	if s.ParentContextID != "" {
+		cmd.Env = append(cmd.Env, "FOLLOWER_PARENT_CONTEXT_ID="+s.ParentContextID)
+	}
 
 	return cmd.Run()
 }
@@ -187,6 +244,49 @@ func requireActiveSession() (*Session, error) {
 	}
 
 	return s, nil
+}
+
+func loadOptionalActiveSession() (*Session, error) {
+	s, err := loadActiveSession()
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	return s, nil
+}
+
+func resolveCheckpointContext(s *Session) (*workcontext.WorkContext, error) {
+	contextID := strings.TrimSpace(os.Getenv("FOLLOWER_CONTEXT_ID"))
+	if contextID != "" {
+		return workcontext.Load(contextID)
+	}
+
+	current, err := workcontext.LoadCurrent()
+	if err == nil {
+		return workcontext.Load(current.ContextID)
+	}
+
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+
+	if s != nil && s.WorkContextID != "" {
+		return workcontext.Load(s.WorkContextID)
+	}
+
+	return nil, errors.New("no active work context")
+}
+
+func checkpointTrackingID(ctx *workcontext.WorkContext, s *Session) string {
+	if s != nil && s.ID != "" {
+		return s.ID
+	}
+
+	return ctx.ID
 }
 
 func loadActiveSession() (*Session, error) {
@@ -244,16 +344,16 @@ func activeSessionPath() string {
 	return filepath.Join(dir, activeSessionFile)
 }
 
-func collectCheckpointInput(s *Session, message string, targets CheckpointTargets, createdAt time.Time) (string, string, error) {
+func collectCheckpointInput(issueID, trackingID, message string, targets CheckpointTargets, createdAt time.Time) (string, string, error) {
 	if strings.TrimSpace(message) != "" {
-		return strings.TrimSpace(message), defaultCommitMessage(s.IssueID, createdAt), nil
+		return strings.TrimSpace(message), defaultCommitMessage(issueID, createdAt), nil
 	}
 
 	if targets.Git {
-		return openGitCheckpointEditor(s, createdAt)
+		return openGitCheckpointEditor(issueID, trackingID, createdAt)
 	}
 
-	content, err := openEditor(checkpointTemplate(s))
+	content, err := openEditor(checkpointTemplate(issueID, trackingID))
 	if err != nil {
 		return "", "", err
 	}
@@ -261,9 +361,9 @@ func collectCheckpointInput(s *Session, message string, targets CheckpointTarget
 	return trimEditorContent(content), "", nil
 }
 
-func openGitCheckpointEditor(s *Session, createdAt time.Time) (string, string, error) {
-	defaultSummary := defaultCommitMessage(s.IssueID, createdAt)
-	content, err := openEditor(gitCheckpointTemplate(s, defaultSummary))
+func openGitCheckpointEditor(issueID, trackingID string, createdAt time.Time) (string, string, error) {
+	defaultSummary := defaultCommitMessage(issueID, createdAt)
+	content, err := openEditor(gitCheckpointTemplate(issueID, trackingID, defaultSummary))
 	if err != nil {
 		return "", "", err
 	}
@@ -324,19 +424,19 @@ func fallbackEditor() string {
 	return "vi"
 }
 
-func checkpointTemplate(s *Session) string {
+func checkpointTemplate(issueID, trackingID string) string {
 	return fmt.Sprintf(
-		"# Follower checkpoint\n# Issue: %s\n# Session: %s\n# Lines starting with # are ignored\n\n",
-		s.IssueID,
-		s.ID,
+		"# Follower checkpoint\n# Issue: %s\n# Context: %s\n# Lines starting with # are ignored\n\n",
+		issueID,
+		trackingID,
 	)
 }
 
-func gitCheckpointTemplate(s *Session, summary string) string {
+func gitCheckpointTemplate(issueID, trackingID, summary string) string {
 	return fmt.Sprintf(
-		"# Follower checkpoint\n# Issue: %s\n# Session: %s\n# Lines starting with # are ignored\n\n[GIT_SUMMARY]\n%s\n\n[MESSAGE]\n",
-		s.IssueID,
-		s.ID,
+		"# Follower checkpoint\n# Issue: %s\n# Context: %s\n# Lines starting with # are ignored\n\n[GIT_SUMMARY]\n%s\n\n[MESSAGE]\n",
+		issueID,
+		trackingID,
 		summary,
 	)
 }

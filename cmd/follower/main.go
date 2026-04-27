@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/never00rei/Follower/internal/config"
 	"github.com/never00rei/Follower/internal/jira"
 	"github.com/never00rei/Follower/internal/session"
+	"github.com/never00rei/Follower/internal/workcontext"
 )
 
 var (
@@ -125,7 +127,22 @@ func followIssue(issueID string, stdout *os.File) error {
 		return err
 	}
 
-	return session.Follow(issue.Key, stdout)
+	if err := session.EnsureNoActive(); err != nil {
+		return err
+	}
+
+	now := time.Now().UTC()
+	ctx, err := workcontext.Create(issue.Key, "", workcontext.ContextSourceFollow, now)
+	if err != nil {
+		return err
+	}
+
+	return session.Follow(session.FollowInput{
+		IssueID:         issue.Key,
+		WorkContextID:   ctx.ID,
+		ParentContextID: ctx.ParentContextID,
+		StartedAt:       now,
+	}, stdout)
 }
 
 func runCheckpoint(args []string) error {

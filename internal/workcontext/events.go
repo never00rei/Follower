@@ -38,10 +38,32 @@ type ContextCreatedData struct {
 
 func (ContextCreatedData) eventData() {}
 
+type CheckpointTargets struct {
+	Jira bool `json:"jira"`
+	Git  bool `json:"git"`
+}
+
+type CheckpointRecordedData struct {
+	Message string            `json:"message"`
+	Targets CheckpointTargets `json:"targets"`
+}
+
+func (CheckpointRecordedData) eventData() {}
+
 func NewContextCreatedEvent(id string, timestamp time.Time, data ContextCreatedData) ContextEvent {
 	return ContextEvent{
 		ID:        id,
 		Type:      EventContextCreated,
+		Version:   1,
+		Timestamp: timestamp,
+		Data:      data,
+	}
+}
+
+func NewCheckpointRecordedEvent(id string, timestamp time.Time, data CheckpointRecordedData) ContextEvent {
+	return ContextEvent{
+		ID:        id,
+		Type:      EventCheckpointRecorded,
 		Version:   1,
 		Timestamp: timestamp,
 		Data:      data,
@@ -88,6 +110,13 @@ func unmarshalEventData(eventType EventType, data json.RawMessage) (EventData, e
 	switch eventType {
 	case EventContextCreated:
 		var eventData ContextCreatedData
+		if err := json.Unmarshal(data, &eventData); err != nil {
+			return nil, err
+		}
+
+		return eventData, nil
+	case EventCheckpointRecorded:
+		var eventData CheckpointRecordedData
 		if err := json.Unmarshal(data, &eventData); err != nil {
 			return nil, err
 		}

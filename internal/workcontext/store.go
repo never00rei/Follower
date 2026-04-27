@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"github.com/never00rei/Follower/internal/config"
 )
 
 const (
@@ -68,7 +66,7 @@ func SaveCurrent(ref CurrentContextRef) error {
 		return errors.New("current context id is required")
 	}
 
-	dir, err := config.EnsureDir()
+	dir, err := EnsureDir()
 	if err != nil {
 		return err
 	}
@@ -82,7 +80,7 @@ func SaveCurrent(ref CurrentContextRef) error {
 }
 
 func LoadCurrent() (*CurrentContextRef, error) {
-	dir, err := config.Dir()
+	dir, err := Dir()
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +99,7 @@ func LoadCurrent() (*CurrentContextRef, error) {
 }
 
 func SaveHistory(history ContextHistory) error {
-	dir, err := config.EnsureDir()
+	dir, err := EnsureDir()
 	if err != nil {
 		return err
 	}
@@ -115,7 +113,7 @@ func SaveHistory(history ContextHistory) error {
 }
 
 func LoadHistory() (*ContextHistory, error) {
-	dir, err := config.Dir()
+	dir, err := Dir()
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +157,7 @@ func UpsertHistoryEntry(entry ContextHistoryEntry) error {
 }
 
 func contextsDir() (string, error) {
-	dir, err := config.Dir()
+	dir, err := Dir()
 	if err != nil {
 		return "", err
 	}
@@ -175,6 +173,28 @@ func ensureContextsDir() (string, error) {
 
 	if err := os.MkdirAll(dir, contextDirPermission); err != nil {
 		return "", fmt.Errorf("could not create contexts directory: %w", err)
+	}
+
+	return dir, nil
+}
+
+func Dir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join(home, ".follower"), nil
+}
+
+func EnsureDir() (string, error) {
+	dir, err := Dir()
+	if err != nil {
+		return "", err
+	}
+
+	if err := os.MkdirAll(dir, contextDirPermission); err != nil {
+		return "", fmt.Errorf("could not create follower data directory: %w", err)
 	}
 
 	return dir, nil

@@ -3,11 +3,20 @@ package session
 import "time"
 
 type Session struct {
-	ID          string       `json:"id"`
-	IssueID     string       `json:"issue_id"`
-	StartedAt   time.Time    `json:"started_at"`
-	EndedAt     *time.Time   `json:"ended_at,omitempty"`
-	Checkpoints []Checkpoint `json:"checkpoints"`
+	ID              string       `json:"id"`
+	IssueID         string       `json:"issue_id"`
+	WorkContextID   string       `json:"work_context_id,omitempty"`
+	ParentContextID string       `json:"parent_context_id,omitempty"`
+	StartedAt       time.Time    `json:"started_at"`
+	EndedAt         *time.Time   `json:"ended_at,omitempty"`
+	Checkpoints     []Checkpoint `json:"checkpoints"`
+}
+
+type FollowInput struct {
+	IssueID         string
+	WorkContextID   string
+	ParentContextID string
+	StartedAt       time.Time
 }
 
 type Checkpoint struct {
